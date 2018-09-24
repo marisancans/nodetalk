@@ -1,14 +1,24 @@
-// #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <ArduinoOTA.h>
-#include <PubSubClient.h>
+// WiFi includes
+ #include <ESP8266WiFi.h>
 
-const char* ssid = "kasteste";
-const char* password = "punkaripa";
-const char* mqttServer = "178.128.197.152";
+ // OTA Includes
+ #include <ESP8266mDNS.h>
+ #include <ArduinoOTA.h>
+ #include <PubSubClient.h>
+
+ const char* ssid         = "Redmi";
+ const char* password     = "zalispali";
+ const char* mqttServer   = "178.128.197.152";
+ const char* id           = "1";
+ const char* subscribeTo  = "nodetalk/update/";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+#include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
+#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
+
+SSD1306Wire  display(0x3c, D2, D1);
 
 void callback(char* topic, byte* payload, unsigned int length) {
  
@@ -25,91 +35,81 @@ void callback(char* topic, byte* payload, unsigned int length) {
  
 }
 
+
 void setup() {
-  Serial.begin(115200);
- 
-  WiFi.begin(ssid, password);
- 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.println("Connected to the WiFi network");
- 
-  client.setServer(mqttServer, 1883);
-  client.setCallback(callback);
-  
- 
-  while (!client.connected()) {
+    Serial.begin(115200);
+    WiFi.begin ( ssid, password );
+
+    display.init();
+    display.flipScreenVertically();
+    display.setContrast(255);
+
+    // Wait for connection
+    while ( WiFi.status() != WL_CONNECTED ) {
+        delay ( 10 );
+        display.clear();
+        Serial.println("Connecting to WiFi..");
+        display.drawString(0, display.getHeight()/2, "Connecting to WiFi..");
+        display.display();
+    }
+    display.clear();
+    Serial.println("Connected to the WiFi network");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    client.setServer(mqttServer, 1883);
+    client.setCallback(callback);
+
+
+    ArduinoOTA.begin();
+    ArduinoOTA.onStart([]() {
+        display.clear();
+        display.setFont(ArialMT_Plain_10);
+        display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
+        display.drawString(display.getWidth()/2, display.getHeight()/2 - 10, "OTA Update");
+        display.display();
+    });
+
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        display.drawProgressBar(4, 32, 120, 8, progress / (total / 100) );
+        display.display();
+    });
+
+    ArduinoOTA.onEnd([]() {
+        display.clear();
+        display.setFont(ArialMT_Plain_10);
+        display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
+        display.drawString(display.getWidth()/2, display.getHeight()/2, "Restart");
+        display.display();
+    });
+
+    // Align text vertical/horizontal center
+    display.setTextAlignment(TEXT_ALIGN_CENTER_BOTH);
+    display.setFont(ArialMT_Plain_10);
+    display.drawString(display.getWidth()/2, display.getHeight()/2, "Ready for OTA:\n" + WiFi.localIP().toString());
+    display.display();
+
+    while (!client.connected()) {
     Serial.println("Connecting to MQTT...");
  
     if (client.connect("ESP32Client")) {
- 
-      Serial.println("connected");  
- 
-    } else {
- 
-      Serial.print("failed with state ");
-      Serial.print(client.state());
-      delay(2000);
- 
-    }
-  }
- 
-  client.subscribe("esp/test");
-
-  // Port defaults to 8266
-  // ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
-  // ArduinoOTA.setHostname("myesp8266");
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_SPIFFS
-      type = "filesystem";
+            Serial.println("connected");  
+        } else {
+            Serial.print("failed with state ");
+            Serial.print(client.state());
+            delay(2000);
+        }
     }
 
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+    std::string buf(subscribeTo);
+    buf.append(id);
+    client.subscribe(buf.c_str());
+
 }
 
 void loop() {
     ArduinoOTA.handle();
     client.loop();
+    Serial.println("Ready");
     delay(1000);
 }
