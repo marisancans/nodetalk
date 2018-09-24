@@ -5,33 +5,53 @@
  #include <ESP8266mDNS.h>
  #include <ArduinoOTA.h>
  #include <PubSubClient.h>
+ #include <ESP8266HTTPClient.h>
+ #include "SSD1306Wire.h"
 
- const char* ssid         = "Redmi";
- const char* password     = "zalispali";
+ const char* ssid         = "kasteste";
+ const char* password     = "punkaripa";
  const char* mqttServer   = "178.128.197.152";
+ const char* djangoServer = "http://hobby-xonecell.c9users.io/nodetalk/getdata/?node_id=";// TESTING
  const char* id           = "1";
  const char* subscribeTo  = "nodetalk/update/";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-#include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
-#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
-
 SSD1306Wire  display(0x3c, D2, D1);
 
 void callback(char* topic, byte* payload, unsigned int length) {
- 
-  Serial.print("Message arrived in topic: ");
-  Serial.println(topic);
- 
-  Serial.print("Message:");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
+
+    Serial.print("Message arrived in topic: ");
+    Serial.println(topic);
+
+    Serial.print("Message:");
+    for (int i = 0; i < length; i++) {
+        Serial.print((char)payload[i]);
+    }
+    Serial.println();
+
+    display.clear();
+    display.drawString(1, display.getHeight()/2, "Got new image");
+    display.display();
+
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http; 
+        String g = String(djangoServer) + String(id);
+        Serial.println(g);
+        http.begin(g);
+        int httpCode = http.GET();
+                                                                
+        if (httpCode > 0) {
+            String payload = http.getString();
+            Serial.println(payload);
+            // TODO: Parsing
+        }
+    http.end();   
   }
- 
-  Serial.println();
-  Serial.println("-----------------------");
+
+    Serial.println();
+    Serial.println("-----------------------");
  
 }
 
@@ -110,6 +130,4 @@ void setup() {
 void loop() {
     ArduinoOTA.handle();
     client.loop();
-    Serial.println("Ready");
-    delay(1000);
 }
