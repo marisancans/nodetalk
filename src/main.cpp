@@ -11,14 +11,69 @@
  const char* ssid         = "kasteste";
  const char* password     = "punkaripa";
  const char* mqttServer   = "178.128.197.152";
- const char* djangoServer = "http://hobby-xonecell.c9users.io/nodetalk/getdata/?node_id=";// TESTING
- const char* id           = "1";
+ const char* djangoServer = "http://178.128.197.152/nodetalk/getdata/?node_id=";// TESTING
+ const char* id           = "5";
  const char* subscribeTo  = "nodetalk/update/";
+ const char  sep          = ',';
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 SSD1306Wire  display(0x3c, D2, D1);
+
+
+void getImage()
+{
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http; 
+        String g = String(djangoServer) + String(id);
+        Serial.print("GET reuest to: ");
+        Serial.println(g);
+        http.begin(g);
+        int httpCode = http.GET();
+                                                                
+        if (httpCode > 0) {
+            String payload = http.getString();
+
+            auto getValue = [&payload](){ 
+                int pos = 0;
+                for(auto const& i : payload)
+                {
+                    if(i == sep){
+                        auto x = payload.substring(0, pos);
+                        payload.remove(0, pos + 1);
+                        return x;
+                    }
+                    pos++;
+                } 
+                return String("");
+            };
+
+            
+            
+            int imgData[3];//  0 width, 1 height, 2 xbmSize
+            for(int i = 0; i < 3; ++i)
+                imgData[i] = getValue().toInt();
+
+            uint8_t* buffer = new uint8_t [imgData[2]]();
+            Serial.println(imgData[2]);
+            
+
+            for(int i = 0; i < imgData[2]; ++i)
+                buffer[i] = getValue().toInt();
+
+
+            for(int i = 0; i < imgData[2]; ++i)
+                Serial.println(buffer[i]);
+
+            display.clear();
+            display.drawXbm(0, 0,imgData[0], imgData[1], buffer);
+            display.display();
+            
+        }
+    http.end();   
+  }
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
 
@@ -35,20 +90,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     display.drawString(1, display.getHeight()/2, "Got new image");
     display.display();
 
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http; 
-        String g = String(djangoServer) + String(id);
-        Serial.println(g);
-        http.begin(g);
-        int httpCode = http.GET();
-                                                                
-        if (httpCode > 0) {
-            String payload = http.getString();
-            Serial.println(payload);
-            // TODO: Parsing
-        }
-    http.end();   
-  }
+    getImage();
 
     Serial.println();
     Serial.println("-----------------------");
@@ -61,7 +103,6 @@ void setup() {
     WiFi.begin ( ssid, password );
 
     display.init();
-    display.flipScreenVertically();
     display.setContrast(255);
 
     // Wait for connection
@@ -111,8 +152,9 @@ void setup() {
 
     while (!client.connected()) {
     Serial.println("Connecting to MQTT...");
- 
-    if (client.connect("ESP32Client")) {
+    
+    String client_name = String("ESP32Client_") + String(id);
+    if (client.connect(client_name.c_str())) {
             Serial.println("connected");  
         } else {
             Serial.print("failed with state ");
@@ -124,6 +166,7 @@ void setup() {
     std::string buf(subscribeTo);
     buf.append(id);
     client.subscribe(buf.c_str());
+    getImage();
 
 }
 
